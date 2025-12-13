@@ -1,5 +1,11 @@
 const { retry, calculateDelay, applyJitter } = require("./index");
 
+// helper to prevent unhandled rejection warnings with jest fake timers
+function preventUnhandledRejection(promise) {
+  promise.catch(() => {});
+  return promise;
+}
+
 describe("retry", () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -44,7 +50,7 @@ describe("retry", () => {
       const error = new Error("persistent failure");
       const fn = jest.fn().mockRejectedValue(error);
 
-      const promise = retry(fn, { maxRetries: 2, initialDelay: 100 });
+      const promise = preventUnhandledRejection(retry(fn, { maxRetries: 2, initialDelay: 100 }));
 
       await jest.advanceTimersByTimeAsync(0); // attempt 1
       await jest.advanceTimersByTimeAsync(100); // attempt 2
@@ -59,7 +65,7 @@ describe("retry", () => {
     test("should respect maxRetries", async () => {
       const fn = jest.fn().mockRejectedValue(new Error("fail"));
 
-      const promise = retry(fn, { maxRetries: 5, initialDelay: 10 });
+      const promise = preventUnhandledRejection(retry(fn, { maxRetries: 5, initialDelay: 10 }));
 
       for (let i = 0; i < 10; i++) {
         await jest.advanceTimersByTimeAsync(100);
@@ -72,7 +78,7 @@ describe("retry", () => {
     test("should handle maxRetries of 0", async () => {
       const fn = jest.fn().mockRejectedValue(new Error("fail"));
 
-      const promise = retry(fn, { maxRetries: 0 });
+      const promise = preventUnhandledRejection(retry(fn, { maxRetries: 0 }));
       await jest.advanceTimersByTimeAsync(0);
 
       await expect(promise).rejects.toThrow();
@@ -102,9 +108,9 @@ describe("retry", () => {
     test("should not retry when retryIf returns false", async () => {
       const fn = jest.fn().mockRejectedValue({ status: 400 });
 
-      const promise = retry(fn, {
+      const promise = preventUnhandledRejection(retry(fn, {
         retryIf: (error) => error.status >= 500,
-      });
+      }));
 
       await jest.advanceTimersByTimeAsync(0);
       await expect(promise).rejects.toEqual({ status: 400 });
@@ -192,12 +198,12 @@ describe("retry with backoff strategies", () => {
     const delays = [];
     const fn = jest.fn().mockRejectedValue(new Error("fail"));
 
-    const promise = retry(fn, {
+    const promise = preventUnhandledRejection(retry(fn, {
       maxRetries: 5,
       initialDelay: 1000,
       maxDelay: 5000,
       backoff: "exponential",
-    });
+    }));
 
     // Track delays by advancing time
     // exponential would be: 1000, 2000, 4000, 8000, 16000
