@@ -3,8 +3,7 @@
  */
 class Container {
   constructor() {
-    // TODO: Initialize registry
-    // this.registry = new Map();
+    this.registry = new Map();
   }
 
   /**
@@ -16,9 +15,15 @@ class Container {
    * @param {boolean} [options.singleton=false] - Whether to create singleton
    */
   register(name, Class, dependencies = [], options = {}) {
-    // TODO: Implement register
     // Store in registry:
     // { type: 'class', Class, dependencies, singleton, instance: null }
+    this.registry.set(name, {
+      type: "class",
+      Class,
+      dependencies,
+      singleton: options.singleton || false,
+      instance: null,
+    });
   }
 
   /**
@@ -27,9 +32,13 @@ class Container {
    * @param {*} instance - Instance to register
    */
   registerInstance(name, instance) {
-    // TODO: Implement registerInstance
     // Store in registry:
     // { type: 'instance', instance }
+    this.registry.set(name, {
+      type: "instance",
+      instance: instance,
+      singleton: true,
+    });
   }
 
   /**
@@ -40,9 +49,15 @@ class Container {
    * @param {Object} [options={}] - Registration options
    */
   registerFactory(name, factory, dependencies = [], options = {}) {
-    // TODO: Implement registerFactory
     // Store in registry:
     // { type: 'factory', factory, dependencies, singleton, instance: null }
+    this.registry.set(name, {
+      type: "factory",
+      factory,
+      dependencies,
+      singleton: options.singleton || false,
+      instance: null,
+    });
   }
 
   /**
@@ -52,17 +67,55 @@ class Container {
    * @returns {*} The resolved instance
    */
   resolve(name, resolutionStack = new Set()) {
-    // TODO: Implement resolve
-
     // Step 1: Check if service is registered
     // Throw error if not found
+    if (!this.registry.has(name)) 
+      throw new Error(`Service '${name}' is not registered`);
 
     // Step 2: Check for circular dependencies
     // If name is already in resolutionStack, throw error
+    if (resolutionStack.has(name)) 
+      throw new Error(`Circular dependency detected: ${Array.from(resolutionStack).join(" => ")} => ${name}`);
 
     // Step 3: Get registration from registry
+    const registration = this.registry.get(name);
+
+    let instance;
 
     // Step 4: Handle different types:
+    switch (registration.type) {
+      case "instance":
+        instance = registration.instance;
+        break;
+      case "class":
+      case "factory":
+        if (registration.singleton && registration.instance) {
+          instance = registration.instance;
+        } else {
+          resolutionStack.add(name);
+          try {
+            const resolvedDependencies = registration.dependencies.map(dep =>
+              this.resolve(dep, resolutionStack)
+            );
+
+            if (registration.type === "class") {
+              instance = new registration.Class(...resolvedDependencies);
+            } else {
+              instance = registration.factory(...resolvedDependencies);
+            }
+          } finally {
+            resolutionStack.delete(name);
+          }
+        }
+        break;
+      default:
+        throw new Error(`Unknown registration type: ${registration.type}`);
+    }
+
+    if (registration.singleton && !registration.instance) 
+      registration.instance = instance;
+
+    return instance;
 
     // For 'instance':
     //   - Return the stored instance
@@ -75,9 +128,6 @@ class Container {
     //   - Remove name from resolutionStack
     //   - If singleton, cache instance
     //   - Return instance
-
-    // Broken: returns undefined (causes test assertions to fail)
-    return undefined;
   }
 
   /**
@@ -86,8 +136,7 @@ class Container {
    * @returns {boolean}
    */
   has(name) {
-    // TODO: Implement has
-    throw new Error("Not implemented");
+    return this.registry.has(name);
   }
 
   /**
@@ -96,16 +145,14 @@ class Container {
    * @returns {boolean} true if was registered
    */
   unregister(name) {
-    // TODO: Implement unregister
-    throw new Error("Not implemented");
+    return this.registry.delete(name);
   }
 
   /**
    * Clear all registrations
    */
   clear() {
-    // TODO: Implement clear
-    throw new Error("Not implemented");
+    this.registry.clear();
   }
 
   /**
@@ -113,8 +160,7 @@ class Container {
    * @returns {string[]}
    */
   getRegistrations() {
-    // TODO: Implement getRegistrations
-    throw new Error("Not implemented");
+    return [...this.registry.keys()];
   }
 }
 
@@ -125,14 +171,28 @@ class Container {
  * @returns {Container} Child container
  */
 function createChildContainer(parent) {
-  // TODO: Implement createChildContainer
-
   // Create a new container that:
   // - First checks its own registry
   // - Falls back to parent for unregistered services
 
   const child = new Container();
+  const originalResolve = child.resolve.bind(child);
+  const originalHas = child.has.bind(child);
+
   // Override resolve to check parent...
+  child.resolve = (name, resolutionStack = new Set()) => {
+    if (child.registry.has(name)) {
+      return originalResolve(name, resolutionStack);
+    }
+
+    return parent.resolve(name, resolutionStack);
+  };
+
+  // Override has to check parent as well
+  child.has = (name) => {
+    return originalHas(name) || parent.has(name);
+  };
+
   return child;
 }
 
